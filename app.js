@@ -431,7 +431,39 @@ function connectGoogle(){
   }});
   tc.requestAccessToken();
 }
+function loadGmail(tok){
+  var H={headers:{Authorization:"Bearer "+tok}};
+  fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=INBOX&maxResults=30",H).then(function(r){return r.json();}).then(function(j){
+    if(j.error){reply("Gmail said: "+(j.error.message||"error")+". If it says the API is off, the Gmail API needs enabling for this client.");return null;}
+    var ids=(j.messages||[]).map(function(m){return m.id;});
+    return Promise.all(ids.map(function(id){
+      return fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/"+id+"?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date",H).then(function(r){return r.json();}).catch(function(){return null;});
+    }));
+  }).then(function(msgs){
+    if(!msgs)return;
+    var lines=[];
+    msgs.forEach(function(m){
+      if(!m||!m.payload)return;
+      var h={};(m.payload.headers||[]).forEach(function(x){h[x.name.toLowerCase()]=x.value;});
+      var from=String(h.from||"").replace(/<[^>]*>/g,"").replace(/"/g,"").trim()||"Unknown sender";
+      lines.push("Email from "+from+" - "+(h.subject||"(no subject)")+" ("+String(h.date||"").slice(0,16)+"): "+String(m.snippet||"").replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/&amp;/g,"&"));
+    });
+    S.docs=S.docs.filter(function(d){return d.name!=="Gmail inbox";});
+    S.docs.push({name:"Gmail inbox",kind:"text",count:lines.length,lines:lines,text:lines.join("\n")});
+    renderSources();
+    reply("Connected your Gmail: your latest "+lines.length+" inbox emails, read-only. Ask me what's waiting, or what I owe someone.");
+  }).catch(function(){reply("I couldn't reach Gmail. Check your connection and try again.");});
+}
+function connectGmail(){
+  var id=gcId();
+  if(!(window.google&&google.accounts&&google.accounts.oauth2)){reply("Google sign-in hasn't loaded. Check your connection and try again.");return;}
+  var tc=google.accounts.oauth2.initTokenClient({client_id:id,scope:"https://www.googleapis.com/auth/gmail.readonly",callback:function(r){
+    if(r&&r.access_token){loadGmail(r.access_token);}else{reply("Google didn't connect: "+((r&&r.error)||"cancelled")+".");}
+  }});
+  tc.requestAccessToken();
+}
 $("gconnect").addEventListener("click",connectGoogle);
+$("gmconnect").addEventListener("click",connectGmail);
 try{$("gcid").value=gcId();}catch(e){}
 
 window.__vox={ask:function(t){var before=S.msgs.length;handle(t);return S.msgs.slice(before).filter(function(m){return m.k==="vox";}).map(function(m){return m.t;}).join(" | ");},addDoc:function(n,t){var r=addDoc(n,t);renderSources();return r;},state:function(){return {events:S.events.length,docs:S.docs.length,debrief:!!S.debrief,ledger:S.ledger.length};},heard:heard};
