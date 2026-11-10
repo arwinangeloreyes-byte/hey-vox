@@ -44,10 +44,21 @@ function startRec(){
         }
       };
       rec.onerror=function(e){
-        if(e&&(e.error==="not-allowed"||e.error==="service-not-allowed")){
-          S.listening=false;$("listenBtn").textContent="Always listening: off";
+        var code=e&&e.error;
+        if(code==="no-speech"||code==="aborted")return;
+        S.listening=false;$("listenBtn").textContent="Always listening: off";
+        if(code==="not-allowed"||code==="service-not-allowed"){
           setStatus("Microphone blocked","");
-          log("sys","Microphone is blocked here. Use the typed box, or allow the microphone for this site.");
+          log("sys",micHelp("The browser refused speech recognition ("+code+")."));
+        }else if(code==="audio-capture"){
+          setStatus("No microphone found","");
+          log("sys","No microphone was found. Plug one in, or choose it in Windows sound settings, then try again.");
+        }else if(code==="network"){
+          setStatus("Speech service unreachable","");
+          log("sys","Chrome's speech service couldn't be reached. It needs an internet connection. Typing still works.");
+        }else{
+          setStatus("Speech error","");
+          log("sys","Speech error: "+code+". Typing still works.");
         }
       };
       rec.onend=function(){recOn=false;if(S.listening&&!S.speaking){setTimeout(startRec,250);}};
@@ -315,17 +326,45 @@ function handle(text){
 }
 
 /* ---------- UI wiring ---------- */
+function micHelp(first){
+  var host="";try{host=location.host;}catch(e){}
+  var embedded=false;try{embedded=(window.top!==window.self);}catch(e){embedded=true;}
+  var t=first+" Host: "+host+".";
+  if(/athena\.com$/i.test(host)||embedded){
+    return t+" This page is embedded or hosted by Athena, which blocks speech input. Open the Hey Vox link in its own browser tab instead: https://arwinangeloreyes-byte.github.io/hey-vox/";
+  }
+  return t+" Fix: click the lock icon left of the address bar, set Microphone to Allow, then reload. If it still fails, open Windows Settings, Privacy and security, Microphone, and allow your browser. Typing works meanwhile.";
+}
+function askMic(done){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){done(true);return;}
+  navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
+    try{stream.getTracks().forEach(function(t){t.stop();});}catch(e){}
+    done(true);
+  }).catch(function(err){
+    var n=err&&err.name;
+    setStatus("Microphone blocked","");
+    if(n==="NotFoundError"||n==="DevicesNotFoundError"){log("sys","No microphone was found. Plug one in or pick it in Windows sound settings, then try again.");}
+    else{log("sys",micHelp("The browser would not give this page the microphone ("+(n||"error")+")."));}
+    done(false);
+  });
+}
 function toggleListen(){
   if(!Rec){log("sys","Voice input isn't available in this browser. Use Chrome or Edge, or type below.");return;}
-  S.listening=!S.listening;
-  $("listenBtn").textContent="Always listening: "+(S.listening?"on":"off");
-  if(S.listening){startRec();setStatus("Listening for Hey "+cap(S.wake),"on");}
-  else{stopRec();setStatus("Idle","");}
+  if(S.listening){S.listening=false;$("listenBtn").textContent="Always listening: off";stopRec();setStatus("Idle","");return;}
+  askMic(function(ok){
+    if(!ok)return;
+    S.listening=true;
+    $("listenBtn").textContent="Always listening: on";
+    startRec();setStatus("Listening for Hey "+cap(S.wake),"on");
+  });
 }
 function oneShot(){
   if(!Rec){log("sys","Voice input isn't available here. Type below instead.");return;}
-  S.wakeUntil=Date.now()+10000;
-  startRec();setStatus("Listening","on");
+  askMic(function(ok){
+    if(!ok)return;
+    S.wakeUntil=Date.now()+10000;
+    startRec();setStatus("Listening","on");
+  });
 }
 function setWake(v){
   var n=String(v||"").trim()||"Vox";
