@@ -402,7 +402,8 @@ try{init();}catch(e){
   var el=document.getElementById("status");if(el)el.textContent="Startup error: "+(e&&e.message);
 }
 /* ---------- Google Calendar connector (read-only, runs in the browser) ---------- */
-function gcId(){try{return localStorage.getItem("vox_gcid")||"";}catch(e){return "";}}
+var GCID_DEFAULT="564150712589-u8jas0hqjtu39970l7mgopbsaqbgbjng.apps.googleusercontent.com";
+function gcId(){try{return localStorage.getItem("vox_gcid")||GCID_DEFAULT;}catch(e){return GCID_DEFAULT;}}
 function loadCal(tok){
   var a=new Date();a.setHours(0,0,0,0);var b=new Date(a.getTime()+30*864e5);
   var url="https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=250&timeMin="+encodeURIComponent(a.toISOString())+"&timeMax="+encodeURIComponent(b.toISOString());
