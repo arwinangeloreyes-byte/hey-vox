@@ -85,6 +85,9 @@ footer{margin-top:14px;color:var(--mut);font-size:13px;text-align:center}
 
     <section class="card">
       <h3>CONNECT DATA</h3>
+      <button class="b main" id="gconnect" style="width:100%;margin-bottom:6px">Connect Google Calendar</button>
+      <input type="text" id="gcid" placeholder="Your Google OAuth client ID (one time)" aria-label="Google OAuth client ID" style="margin-bottom:6px">
+      <p class="note" style="margin:0 0 10px">Read-only. You sign in with Google; events load into this page only. Gmail and Drive are next.</p>
       <input type="file" id="files" multiple accept=".ics,.csv,.txt,.md,.json" class="b" style="width:100%">
       <textarea id="paste" placeholder="Or paste notes, a to-do list, or an email thread here"></textarea>
       <div class="row" style="justify-content:flex-start">
@@ -104,6 +107,7 @@ footer{margin-top:14px;color:var(--mut);font-size:13px;text-align:center}
   </div>
   <footer>Rule-based and on-device: it answers only from what you connect, and says so when it doesn't know.</footer>
 </div>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="app.js"></script>
 </body>
 </html>

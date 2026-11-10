@@ -401,5 +401,37 @@ function init(){
 try{init();}catch(e){
   var el=document.getElementById("status");if(el)el.textContent="Startup error: "+(e&&e.message);
 }
+/* ---------- Google Calendar connector (read-only, runs in the browser) ---------- */
+function gcId(){try{return localStorage.getItem("vox_gcid")||"";}catch(e){return "";}}
+function loadCal(tok){
+  var a=new Date();a.setHours(0,0,0,0);var b=new Date(a.getTime()+30*864e5);
+  var url="https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=250&timeMin="+encodeURIComponent(a.toISOString())+"&timeMax="+encodeURIComponent(b.toISOString());
+  fetch(url,{headers:{Authorization:"Bearer "+tok}}).then(function(r){return r.json();}).then(function(j){
+    if(j.error){reply("Google Calendar said: "+(j.error.message||"error")+". If it says the API is off, enable the Google Calendar API for your client ID.");return;}
+    S.events=S.events.filter(function(e){return e.src!=="Google Calendar";});
+    S.docs=S.docs.filter(function(d){return d.name!=="Google Calendar";});
+    var n=0;(j.items||[]).forEach(function(it){
+      var s=it.start||{};var d=s.dateTime?new Date(s.dateTime):(s.date?new Date(s.date+"T00:00:00"):null);
+      if(d){S.events.push({title:it.summary||"(no title)",start:d,allDay:!s.dateTime,loc:it.location||"",src:"Google Calendar"});n++;}
+    });
+    S.events.sort(function(x,y){return x.start-y.start;});
+    S.docs.push({name:"Google Calendar",kind:"calendar",count:n,lines:[],text:""});
+    renderSources();
+    reply("Connected your Google Calendar: "+n+" events in the next 30 days. It's read-only, and nothing leaves this page.");
+  }).catch(function(){reply("I couldn't reach Google Calendar. Check your connection and try again.");});
+}
+function connectGoogle(){
+  var id=($("gcid").value||"").trim()||gcId();
+  if(!id){reply("To connect Google Calendar I need a Google OAuth client ID. Paste yours in the box under Connect data, then press the button again.");return;}
+  try{localStorage.setItem("vox_gcid",id);}catch(e){}
+  if(!(window.google&&google.accounts&&google.accounts.oauth2)){reply("Google sign-in hasn't loaded. Check your connection and try again.");return;}
+  var tc=google.accounts.oauth2.initTokenClient({client_id:id,scope:"https://www.googleapis.com/auth/calendar.readonly",callback:function(r){
+    if(r&&r.access_token){loadCal(r.access_token);}else{reply("Google didn't connect: "+((r&&r.error)||"cancelled")+".");}
+  }});
+  tc.requestAccessToken();
+}
+$("gconnect").addEventListener("click",connectGoogle);
+try{$("gcid").value=gcId();}catch(e){}
+
 window.__vox={ask:function(t){var before=S.msgs.length;handle(t);return S.msgs.slice(before).filter(function(m){return m.k==="vox";}).map(function(m){return m.t;}).join(" | ");},addDoc:function(n,t){var r=addDoc(n,t);renderSources();return r;},state:function(){return {events:S.events.length,docs:S.docs.length,debrief:!!S.debrief,ledger:S.ledger.length};},heard:heard};
 })();
