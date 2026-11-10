@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hey Vox - a voice assistant that only knows what you connect</title>
+<style>
+:root{--bg:#070b16;--panel:#0f1530;--line:#232c57;--ink:#eef1ff;--mut:#9aa6d6;--cy:#5cf2e0;--vio:#8a7bff;--pink:#ff7ad9;--ok:#5dffb0;--warn:#ffd25d}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:radial-gradient(900px 500px at 20% -10%,#1d2a66 0,#070b16 60%) fixed;color:var(--ink);font:16px/1.5 system-ui,"Segoe UI",Roboto,Arial,sans-serif;min-height:100vh}
+.app{max-width:1180px;margin:0 auto;padding:18px 16px 28px}
+header{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+h1{margin:0;font-size:clamp(22px,4vw,32px)}
+h1 span{background:linear-gradient(90deg,var(--cy),var(--vio));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{margin:2px 0 0;color:var(--mut);font-size:14px}
+.grid{display:grid;grid-template-columns:320px 1fr 340px;gap:14px;align-items:start}
+.card{background:linear-gradient(180deg,#131a3d,#0e1330);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 10px 36px #0007}
+h3{margin:0 0 8px;font-size:12px;letter-spacing:1.6px;color:var(--mut);font-weight:700}
+.talk{text-align:center}
+.orbwrap{display:flex;justify-content:center;margin:6px 0 10px}
+.orb{width:128px;height:128px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#bafcf3,#5cf2e0 40%,#4a6bff 100%);box-shadow:0 0 40px #5cf2e088,inset 0 0 24px #ffffff55;transition:.25s;cursor:pointer;border:0}
+.orb.on{box-shadow:0 0 64px #5cf2e0,0 0 120px #8a7bff88;transform:scale(1.06);animation:pulse 1.3s infinite}
+.orb.talking{background:radial-gradient(circle at 35% 30%,#ffd6f6,#ff7ad9 45%,#8a7bff 100%);box-shadow:0 0 64px #ff7ad9aa;animation:pulse .8s infinite}
+@keyframes pulse{50%{transform:scale(1.12)}}
+#status{font-weight:700;min-height:24px}
+#hint{color:var(--mut);font-size:14px;margin:4px 0 10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:8px 0}
+button.b,select,input[type=text],textarea{background:#1a2250;color:var(--ink);border:1px solid #38458f;border-radius:10px;padding:9px 12px;font:600 14px system-ui}
+button.b{cursor:pointer}
+button.b:hover{background:#27338a}
+button.main{background:linear-gradient(90deg,#4a6bff,#8a7bff);border:0}
+.tog{display:flex;align-items:center;gap:8px;justify-content:center;font-size:14px;color:#cfd6ff;margin:6px 0}
+input[type=text]{width:100%}
+.typed{display:flex;gap:8px;margin-top:10px}
+.typed input{flex:1}
+#log{height:470px;overflow:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px}
+.msg{max-width:88%;padding:9px 12px;border-radius:14px;white-space:pre-wrap;word-wrap:break-word}
+.me{align-self:flex-end;background:#2a3a99}
+.vox{align-self:flex-start;background:#18204d;border:1px solid var(--line)}
+.sys{align-self:center;color:var(--mut);font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.chip{background:#16204f;border:1px solid #31408a;border-radius:999px;padding:5px 10px;font-size:13px;cursor:pointer;color:#dfe5ff}
+.chip:hover{background:#27338a}
+.src{background:#101845;border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin:5px 0;font-size:13px;color:#cfd6ff}
+pre{margin:0;background:#0a1030;border:1px solid var(--line);border-radius:10px;padding:10px;white-space:pre-wrap;font:12.5px/1.5 ui-monospace,Consolas,monospace;color:#dfe5ff;min-height:56px;max-height:180px;overflow:auto}
+textarea{width:100%;height:70px;resize:vertical;font-weight:500}
+.note{color:var(--mut);font-size:12.5px;margin-top:8px}
+footer{margin-top:14px;color:var(--mut);font-size:13px;text-align:center}
+@media(max-width:980px){.grid{grid-template-columns:1fr}#log{height:340px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>Hey <span id="nameTitle">Vox</span></h1>
+      <p class="sub">A voice assistant that only knows what you connect. Your data stays in this page.</p>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="card talk">
+      <h3>TALK</h3>
+      <div class="orbwrap"><button class="orb" id="orb" aria-label="Listen"></button></div>
+      <div id="status">Idle</div>
+      <div id="hint">Press the orb, or turn on always listening and say "Hey Vox".</div>
+      <div class="row">
+        <button class="b main" id="listenBtn">Always listening: off</button>
+      </div>
+      <div class="tog"><label><input type="checkbox" id="voiceOn" checked> Speak replies</label></div>
+      <h3 style="margin-top:12px">WAKE NAME</h3>
+      <input type="text" id="wakeName" value="Vox" maxlength="20" aria-label="Wake name">
+      <div class="typed">
+        <input type="text" id="typed" placeholder="Or type to talk to it" aria-label="Type a message">
+        <button class="b" id="sendBtn">Send</button>
+      </div>
+      <p class="note">Voice needs Chrome or Edge and microphone permission. Typing always works.</p>
+    </section>
+
+    <section class="card">
+      <h3>CONVERSATION</h3>
+      <div id="log" aria-live="polite"></div>
+    </section>
+
+    <section class="card">
+      <h3>CONNECT DATA</h3>
+      <input type="file" id="files" multiple accept=".ics,.csv,.txt,.md,.json" class="b" style="width:100%">
+      <textarea id="paste" placeholder="Or paste notes, a to-do list, or an email thread here"></textarea>
+      <div class="row" style="justify-content:flex-start">
+        <button class="b" id="addPaste">Add pasted text</button>
+        <button class="b" id="clearData">Clear all data</button>
+      </div>
+      <div id="sources"></div>
+      <p class="note">Calendar files (.ics), notes, CSV and text. Nothing is uploaded anywhere.</p>
+
+      <h3 style="margin-top:14px">TRY SAYING</h3>
+      <div class="chips" id="chips"></div>
+
+      <h3>PROMISE RECEIPT</h3>
+      <pre id="receipt">Run a debrief to get a receipt.</pre>
+      <div class="row" style="justify-content:flex-start"><button class="b" id="copyReceipt">Copy receipt</button></div>
+    </section>
+  </div>
+  <footer>Rule-based and on-device: it answers only from what you connect, and says so when it doesn't know.</footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
