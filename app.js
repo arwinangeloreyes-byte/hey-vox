@@ -34,6 +34,7 @@ function speak(text){
 
 /* ---------- speech in ---------- */
 function startRec(){
+  if(S.useLocal){startLocal();return;}
   if(!Rec||S.speaking||recOn)return;
   try{
     if(!rec){
@@ -46,6 +47,12 @@ function startRec(){
       rec.onerror=function(e){
         var code=e&&e.error;
         if(code==="no-speech"||code==="aborted")return;
+        if(code==="network"){
+          log("sys","Chrome's speech service couldn't be reached, so I'm switching to on-device voice.");
+          var wasOn=S.listening||Date.now()<S.wakeUntil;
+          recOn=false;setLocal(true);if(wasOn){S.listening=true;$("listenBtn").textContent="Always listening: on";startLocal();}
+          return;
+        }
         S.listening=false;$("listenBtn").textContent="Always listening: off";
         if(code==="not-allowed"||code==="service-not-allowed"){
           setStatus("Microphone blocked","");
@@ -66,10 +73,61 @@ function startRec(){
     rec.start();recOn=true;
   }catch(e){recOn=false;}
 }
-function stopRec(){try{if(rec&&recOn)rec.stop();}catch(e){}recOn=false;}
+function stopRec(){if(S.useLocal)return;try{if(rec&&recOn)rec.stop();}catch(e){}recOn=false;}
+
+/* ---------- on-device speech (Vosk, no Google service) ---------- */
+var VOSK_JS="https://cdn.jsdelivr.net/npm/vosk-browser@0.0.8/dist/vosk.js";
+var VOSK_MODEL="https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-en-us-0.15.tar.gz";
+var L={model:null,loading:false,ctx:null,node:null,src:null,stream:null,rec:null,on:false};
+function loadVosk(){
+  return new Promise(function(res,rej){
+    if(window.Vosk)return res();
+    var s=document.createElement("script");s.src=VOSK_JS;s.onload=function(){res();};s.onerror=function(){rej(new Error("script"));};document.head.appendChild(s);
+  });
+}
+function startLocal(){
+  if(L.on||L.loading)return;
+  L.loading=true;
+  setStatus(L.model?"Starting on-device voice...":"Loading on-device voice (one time, about 40 MB)...","");
+  loadVosk().then(function(){return L.model||Vosk.createModel(VOSK_MODEL);}).then(function(m){
+    L.model=m;
+    return navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});
+  }).then(function(stream){
+    L.stream=stream;
+    L.ctx=new (window.AudioContext||window.webkitAudioContext)();
+    var r=new L.model.KaldiRecognizer(L.ctx.sampleRate);L.rec=r;
+    r.on("result",function(m){var t=m&&m.result&&m.result.text;if(t&&!S.speaking)heard(t);});
+    L.src=L.ctx.createMediaStreamSource(stream);
+    L.node=L.ctx.createScriptProcessor(4096,1,1);
+    L.node.onaudioprocess=function(e){if(S.speaking)return;try{r.acceptWaveform(e.inputBuffer);}catch(x){}};
+    L.src.connect(L.node);L.node.connect(L.ctx.destination);
+    L.on=true;L.loading=false;
+    setStatus(S.listening?"Listening for Hey "+cap(S.wake):"Listening",S.listening||Date.now()<S.wakeUntil?"on":"");
+    log("sys","On-device voice is on. It runs on your computer, so no Google speech service is needed.");
+  }).catch(function(e){
+    L.loading=false;S.listening=false;$("listenBtn").textContent="Always listening: off";
+    var n=e&&e.name;
+    if(n==="NotAllowedError"||n==="NotFoundError"){setStatus("Microphone blocked","");log("sys",micHelp("The browser would not give this page the microphone ("+n+")."));}
+    else{setStatus("On-device voice failed","");log("sys","The on-device voice model couldn't load ("+((e&&e.message)||"error")+"). It needs to download about 40 MB once. Check your connection, or type below.");}
+  });
+}
+function stopLocal(){
+  try{if(L.node){L.node.disconnect();L.node.onaudioprocess=null;}}catch(e){}
+  try{if(L.src)L.src.disconnect();}catch(e){}
+  try{if(L.stream)L.stream.getTracks().forEach(function(t){t.stop();});}catch(e){}
+  try{if(L.ctx)L.ctx.close();}catch(e){}
+  try{if(L.rec&&L.rec.remove)L.rec.remove();}catch(e){}
+  L.node=L.src=L.stream=L.ctx=L.rec=null;L.on=false;L.loading=false;
+}
+function setLocal(on){
+  S.useLocal=!!on;
+  try{$("localVoice").checked=S.useLocal;}catch(e){}
+  if(S.useLocal){try{if(rec&&recOn)rec.stop();}catch(e){}recOn=false;}else{stopLocal();}
+}
 
 function wakeRegex(){
   var n=S.wake.replace(/[^a-z0-9 ]/g,"").trim()||"vox";
+  if(S.useLocal&&n==="vox")n="(?:vox|vocs|box|vax|fox|vogue|folks)";
   return new RegExp("\\b(?:hey|hi|okay|ok|hello)[ ,]+"+n+"\\b[ ,.!?]*","i");
 }
 function heard(text){
@@ -349,8 +407,8 @@ function askMic(done){
   });
 }
 function toggleListen(){
-  if(!Rec){log("sys","Voice input isn't available in this browser. Use Chrome or Edge, or type below.");return;}
-  if(S.listening){S.listening=false;$("listenBtn").textContent="Always listening: off";stopRec();setStatus("Idle","");return;}
+  if(!Rec&&!S.useLocal)setLocal(true);
+  if(S.listening){S.listening=false;$("listenBtn").textContent="Always listening: off";stopRec();stopLocal();setStatus("Idle","");return;}
   askMic(function(ok){
     if(!ok)return;
     S.listening=true;
@@ -359,11 +417,12 @@ function toggleListen(){
   });
 }
 function oneShot(){
-  if(!Rec){log("sys","Voice input isn't available here. Type below instead.");return;}
+  if(!Rec&&!S.useLocal)setLocal(true);
   askMic(function(ok){
     if(!ok)return;
     S.wakeUntil=Date.now()+10000;
     startRec();setStatus("Listening","on");
+    if(S.useLocal){setTimeout(function(){if(!S.listening&&!S.debrief)stopLocal();},12000);}
   });
 }
 function setWake(v){
@@ -462,6 +521,8 @@ function connectGmail(){
   }});
   tc.requestAccessToken();
 }
+$("localVoice").addEventListener("change",function(){var on=$("localVoice").checked;setLocal(on);if(S.listening){if(on)startLocal();else startRec();}});
+if(!Rec)setLocal(true);
 $("gconnect").addEventListener("click",connectGoogle);
 $("gmconnect").addEventListener("click",connectGmail);
 try{$("gcid").value=gcId();}catch(e){}
